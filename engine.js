@@ -1,0 +1,277 @@
+// Motor do Diagnóstico Elevar — perguntas, classe do lead, frentes, índice e mensagem do WhatsApp.
+// Sem interface; roda no navegador e no Node (para teste).
+(function (root) {
+  "use strict";
+
+  // ───────────────────────── Perguntas ─────────────────────────
+  const Q = {
+    faturamento: {
+      id: "faturamento", step: 1,
+      title: "Qual o faturamento mensal da farmácia?",
+      options: [
+        { id: "ate50", label: "Até R$ 50 mil por mês", msg: "até R$ 50 mil/mês" },
+        { id: "50a100", label: "R$ 50 a 100 mil por mês", msg: "R$ 50 a 100 mil/mês" },
+        { id: "100a200", label: "R$ 100 a 200 mil por mês", msg: "R$ 100 a 200 mil/mês" },
+        { id: "200a500", label: "R$ 200 a 500 mil por mês", msg: "R$ 200 a 500 mil/mês" },
+        { id: "acima500", label: "Mais de R$ 500 mil por mês", msg: "mais de R$ 500 mil/mês" }
+      ]
+    },
+    erp: {
+      id: "erp", step: 2,
+      title: "Qual sistema a farmácia usa?",
+      helper: "O programa de caixa e estoque da loja (ERP).",
+      options: [
+        { id: "alpha7", label: "Alpha7" },
+        { id: "inova", label: "Inova Farma" },
+        { id: "trier", label: "Trier" },
+        { id: "digifarma", label: "Digifarma" },
+        { id: "linxbig", label: "Linx Big" },
+        { id: "outro", label: "Outro" }
+      ]
+    },
+    atendimento: {
+      id: "atendimento", step: 3,
+      title: "Como é o atendimento no WhatsApp hoje?",
+      options: [
+        { id: "nao_vende", label: "Não vendo pelo WhatsApp", msg: "ainda não vende pelo WhatsApp" },
+        { id: "balcao", label: "O balcão atende tudo", msg: "o balcão atende tudo" },
+        { id: "atendente_ok", label: "Tenho atendente e dou conta do volume", msg: "tem atendente e dá conta do volume" },
+        { id: "atendente", label: "Tenho atendente, mas o volume é alto e perco mensagens", msg: "tem atendente, mas o volume é alto e perde mensagens" },
+        { id: "equipe", label: "Equipe grande, tudo manual", msg: "equipe grande, atendimento manual" }
+      ]
+    },
+    gaps: {
+      id: "gaps", step: 4, multi: true,
+      title: "O que a farmácia já tem hoje?",
+      helper: "Marque todos que se aplicam.",
+      options: [
+        { id: "site", label: "Site onde o cliente compra" },
+        { id: "recompra", label: "Mensagem para o cliente voltar a comprar" },
+        { id: "metricas", label: "Saber quanto cada atendente vende" },
+        { id: "status", label: "Cliente acompanha a entrega pelo WhatsApp" },
+        { id: "nenhum", label: "Nenhum desses", exclusive: true }
+      ]
+    }
+  };
+
+  const STEPS = ["faturamento", "erp", "atendimento", "gaps", "contato"];
+
+  // ERPs com integração (proposta e calls). Linx Big: via banco de dados, API em desenvolvimento.
+  const ERP_INTEGRADOS = ["alpha7", "inova", "trier", "digifarma"];
+  const ERP_PARCIAL = ["linxbig"];
+  // CNAE de farmácia: 4771-7/01, /02, /03. Qualquer outro (incl. veterinário /04) é desqualificado.
+  const CNAE_FARMACIA = [4771701, 4771702, 4771703];
+
+  const optLabel = (qid, v) => { const o = Q[qid].options.find(x => x.id === v); return o ? o.label : v; };
+
+  function erpStatus(erp) {
+    if (ERP_INTEGRADOS.includes(erp)) return "integrado";
+    if (ERP_PARCIAL.includes(erp)) return "parcial";
+    return "nao_integrado";
+  }
+
+  // ───────────────────────── Classe do lead ─────────────────────────
+  // farmacia: true | false | null (CNPJ não consultado → não desqualifica)
+  function classe(fat, farmacia) {
+    if (farmacia === false) return "DESQ";
+    return { acima500: "A", "200a500": "B", "100a200": "C", "50a100": "D", ate50: "E" }[fat] || "E";
+  }
+
+  function isFarmacia(info) {
+    if (!info || info.cnae == null) return null;
+    return CNAE_FARMACIA.includes(Number(info.cnae));
+  }
+
+  // Porte do CNPJ x faturamento declarado (ME até ~R$ 30 mil/mês; EPP até ~R$ 400 mil/mês)
+  function divergePorte(info, fat) {
+    if (!info || !info.porte) return false;
+    const p = String(info.porte).toUpperCase();
+    if (/MICRO/.test(p)) return ["50a100", "100a200", "200a500", "acima500"].includes(fat);
+    if (/PEQUENO/.test(p)) return fat === "acima500";
+    return false;
+  }
+
+  // ───────────────────────── Frentes ─────────────────────────
+  const NOTA_RANK = { "A+": 0, A: 1, B: 2 };
+  const manual = a => ["balcao", "atendente_ok", "atendente", "equipe"].includes(a.atendimento);
+  // item "não marcado" = lacuna (se marcou "nenhum", todos são lacuna)
+  const lacuna = (a, item) => !(a.gaps || []).includes(item);
+
+  const FRENTES = [
+    { id: "resposta", icon: "clock", nome: "Resposta rápida no WhatsApp",
+      curto: "Fila e distribuição para ninguém ficar sem resposta.",
+      stat: { n: "73%", t: "dos clientes desistem quando a resposta demora" },
+      on: a => manual(a), nota: a => ({ atendente: "A+", equipe: "A+", balcao: "A" }[a.atendimento] || "B") },
+    { id: "chat_erp", icon: "chat", nome: "Venda no WhatsApp ligada ao seu sistema",
+      curto: "Preço, foto e estoque do seu sistema direto na conversa.",
+      stat: { n: "8% → 25%", t: "dos atendimentos viram venda, num caso real" },
+      on: () => true, nota: () => "A+" },
+    { id: "estoque", icon: "box", nome: "Estoque real na hora da venda",
+      curto: "O atendente vê o que a loja tem, sem sair da conversa.",
+      stat: { n: "40%", t: "das vendas perdidas vêm de falta de estoque" },
+      on: () => true, nota: () => "A" },
+    { id: "manual", icon: "zap", nome: "Menos trabalho repetido",
+      curto: "Pedido, pagamento e entrega sem digitar tudo de novo.",
+      stat: { n: "30%", t: "de custo escondido em tarefas manuais" },
+      on: a => manual(a), nota: a => (a.atendimento === "equipe" ? "A+" : a.atendimento === "atendente_ok" ? "B" : "A") },
+    { id: "site", icon: "site", nome: "Loja online ligada ao estoque",
+      curto: "Cliente compra sozinho, a qualquer hora.",
+      stat: { n: "6% → 10,1%", t: "dos carrinhos viram venda, num caso real" },
+      on: a => lacuna(a, "site"), nota: () => "A+" },
+    { id: "ia", icon: "bot", nome: "Atendimento automático nos picos",
+      curto: "Responde na hora, de dia, de noite e quando a fila enche.",
+      on: a => a.atendimento === "atendente" || a.atendimento === "equipe", nota: a => (a.atendimento === "equipe" ? "A+" : "A") },
+    { id: "recompra", icon: "repeat", nome: "Cliente que volta a comprar",
+      curto: "Lembra quem toma remédio de uso contínuo e quem largou a compra.",
+      on: a => lacuna(a, "recompra"), nota: () => "A" },
+    { id: "metricas", icon: "chart", nome: "Quanto cada atendente vende",
+      curto: "Ranking de vendas e tempo de resposta, sem planilha.",
+      on: a => lacuna(a, "metricas"), nota: () => "B" },
+    { id: "status", icon: "truck", nome: "Cliente acompanha o pedido",
+      curto: "Avisos no WhatsApp, no estilo iFood.",
+      on: a => lacuna(a, "status"), nota: () => "B" },
+    { id: "onboarding", icon: "chat", nome: "WhatsApp como canal de vendas",
+      curto: "Começar a vender pelo WhatsApp já ligado ao estoque.",
+      on: a => a.atendimento === "nao_vende", nota: () => "A+" }
+  ];
+
+  // Detalhe de cada oportunidade: "hoje" vem só do que o lead respondeu; "ajustes" vêm da proposta e das calls (sem números novos).
+  const DETALHE = {
+    resposta: { hoje: a => ({ balcao: "O balcão atende o WhatsApp entre um cliente e outro.", atendente: "O volume é alto e mensagens ficam sem resposta.", equipe: "A equipe atende tudo no manual.", atendente_ok: "O atendente dá conta do volume hoje." }[a.atendimento] || null),
+      ajustes: ["Vários atendentes no mesmo número do WhatsApp", "Fila com distribuição automática entre a equipe", "Tela de supervisão: quem espera e há quanto tempo"] },
+    chat_erp: { hoje: a => (a.atendimento === "nao_vende" ? "A farmácia ainda não vende pelo WhatsApp." : null),
+      ajustes: ["Catálogo com foto e preço na própria conversa", "Carrinho e pagamento sem sair do WhatsApp", "Histórico de compras do cliente à mão"] },
+    estoque: { hoje: () => null,
+      ajustes: ["Produto, preço e quantidade na hora do atendimento", "Estoque mínimo: o produto sai da venda antes de acabar", "Mais de uma loja do mesmo dono: estoque somado"] },
+    manual: { hoje: a => (a.atendimento === "equipe" ? "A equipe atende tudo no manual." : null),
+      ajustes: ["Cupom e promoção aplicados na hora", "Resumo do pedido enviado para o cliente confirmar", "Pedido pronto para imprimir e separar"] },
+    site: { hoje: () => "A farmácia não tem loja online onde o cliente compra sozinho.",
+      ajustes: ["Loja com a sua marca, montada pela equipe da Elevar", "Cliente compra sozinho ou chama no WhatsApp", "Carrinho abandonado: lembra quem largou a compra"] },
+    ia: { hoje: a => ({ atendente: "O volume é alto e mensagens ficam sem resposta.", equipe: "A equipe atende tudo no manual." }[a.atendimento] || null),
+      ajustes: ["Entende áudio, texto e imagem", "Passa para o atendente quando precisa", "Você define horários e jeito de falar"] },
+    recompra: { hoje: () => "Não há lembrete para o cliente voltar a comprar.",
+      ajustes: ["Lembrete automático de uso contínuo, no prazo que você escolher", "Lista de quem largou o carrinho, para o time chamar", "Cupom ou oferta junto do lembrete"] },
+    metricas: { hoje: () => "Não dá para ver quanto cada atendente vende.",
+      ajustes: ["Ranking de vendas por atendente", "Tempo de resposta e de atendimento de cada um", "Horários de pico e produtos mais pedidos"] },
+    status: { hoje: () => "O cliente não recebe aviso do andamento do pedido.",
+      ajustes: ["Aviso automático: aprovado, separado, a caminho, entregue", "Entregador atualiza o status pelo celular", "Cliente acompanha sem precisar perguntar"] },
+    onboarding: { hoje: () => "A farmácia ainda não vende pelo WhatsApp.",
+      ajustes: ["Número de WhatsApp na plataforma, com vários atendentes", "Treinamento da equipe de atendimento", "Implantação guiada, em média 30 dias"] }
+  };
+
+  // "Em resumo": frases com verbo, uma por oportunidade. "Preço de não mudar": só estatísticas da proposta (sem R$ inventado).
+  const RESUMO = {
+    resposta: { b: "responder mais rápido no WhatsApp", r: "com fila e distribuição entre os atendentes." },
+    chat_erp: { b: "fechar a venda dentro da conversa", r: "com catálogo, carrinho e pagamento no WhatsApp." },
+    estoque: { b: "mostrar o estoque certo na hora da venda", r: "e evitar vender o que não tem." },
+    manual: { b: "tirar trabalho repetido do atendimento", r: "com cupom, resumo do pedido e impressão prontos." },
+    site: { b: "vender também por uma loja online", r: "ligada ao estoque e aberta a qualquer hora." },
+    ia: { b: "atender nos picos e fora do expediente", r: "com atendimento automático que chama o atendente quando precisa." },
+    recompra: { b: "trazer o cliente de volta", r: "com lembrete de uso contínuo e carrinho abandonado." },
+    metricas: { b: "enxergar quanto cada atendente vende", r: "com ranking e tempo de resposta." },
+    status: { b: "avisar o cliente do andamento do pedido", r: "no WhatsApp, do aprovado até a entrega." },
+    onboarding: { b: "começar a vender pelo WhatsApp", r: "com a equipe treinada e a plataforma implantada." }
+  };
+  const INERCIA = {
+    resposta: "73% dos clientes desistem quando a resposta demora.",
+    estoque: "40% das vendas perdidas vêm de falta de estoque.",
+    manual: "Cerca de 30% de custo escondido em tarefas manuais.",
+    site: "Menos de 1,5% de conversão para quem não oferece mais de um canal."
+  };
+
+  // Notas por área (0-100). Item que a farmácia já tem = alto; item que falta = baixo.
+  // Índice = média ponderada das áreas. Pesos são julgamento comercial (atendimento pesa mais), não estatística.
+  function areas(a) {
+    const mk = item => ((a.gaps || []).includes(item) ? 100 : 20);
+    const atend = { nao_vende: 10, balcao: 30, atendente: 40, equipe: 45, atendente_ok: 90 }[a.atendimento];
+    return [
+      { id: "atendimento", nome: "Atendimento", icon: "chat", peso: 0.30, valor: atend == null ? 30 : atend },
+      { id: "loja", nome: "Loja online", icon: "site", peso: 0.25, valor: mk("site") },
+      { id: "volta", nome: "Cliente que volta", icon: "repeat", peso: 0.15, valor: mk("recompra") },
+      { id: "gestao", nome: "Gestão da equipe", icon: "chart", peso: 0.15, valor: mk("metricas") },
+      { id: "entrega", nome: "Entrega acompanhada", icon: "truck", peso: 0.15, valor: mk("status") }
+    ];
+  }
+
+  // Comparativo "hoje x com a Elevar": só pontos que o lead respondeu e que a plataforma resolve (proposta e calls). Sem R$ nem promessa de resultado.
+  function comparativo(a) {
+    const out = [];
+    const at = {
+      nao_vende: ["Ainda não vende pelo WhatsApp", "O WhatsApp vira canal de venda, ligado ao estoque"],
+      balcao: ["O balcão atende o WhatsApp entre um cliente e outro", "Fila com vários atendentes e catálogo na conversa"],
+      atendente: ["Volume alto e mensagens sem resposta", "Fila distribuída e atendimento automático nos picos"],
+      equipe: ["Equipe grande, tudo no manual", "Distribuição automática, pedido e pagamento na conversa"]
+    }[a.atendimento];
+    if (at) out.push({ id: "atendimento", nome: "Atendimento", hoje: at[0], com: at[1] });
+    if (lacuna(a, "site")) out.push({ id: "loja", nome: "Loja online", hoje: "Sem loja onde o cliente compra sozinho", com: "Loja online ligada ao estoque, com carrinho e pagamento" });
+    if (lacuna(a, "recompra")) out.push({ id: "volta", nome: "Cliente que volta", hoje: "Sem lembrete para quem toma remédio de uso contínuo", com: "Lembrete automático e recuperação de carrinho" });
+    if (lacuna(a, "metricas")) out.push({ id: "gestao", nome: "Gestão da equipe", hoje: "Sem ver quanto cada atendente vende", com: "Ranking de vendas e tempo de resposta" });
+    if (lacuna(a, "status")) out.push({ id: "entrega", nome: "Entrega", hoje: "Cliente sem aviso do andamento do pedido", com: "Avisos no WhatsApp: aprovado, separado, a caminho" });
+    return out;
+  }
+
+  // ───────────────────────── Diagnóstico ─────────────────────────
+  function diagnosticar(a) {
+    const frentes = FRENTES.filter(f => f.on(a)).map((f, i) => ({ id: f.id, icon: f.icon, nome: f.nome, curto: f.curto, stat: f.stat || null, nota: f.nota(a), hoje: DETALHE[f.id].hoje(a), ajustes: DETALHE[f.id].ajustes, resumo: RESUMO[f.id], inercia: INERCIA[f.id] || null, _i: i }))
+      .sort((x, y) => NOTA_RANK[x.nota] - NOTA_RANK[y.nota] || x._i - y._i)
+      .map(({ _i, ...rest }) => rest);
+
+    // Índice (0-100) = média ponderada das áreas
+    const ar = areas(a);
+    const indice = Math.max(10, Math.min(97, Math.round(ar.reduce((s, x) => s + x.valor * x.peso, 0))));
+    const banda = indice < 40 ? { id: "critica", label: "Muito espaço para vender mais", tone: "bad" }
+      : indice < 60 ? { id: "relevante", label: "Espaço relevante para vender mais", tone: "warn" }
+      : indice < 80 ? { id: "parcial", label: "Boa base, falta organizar", tone: "info" }
+      : { id: "madura", label: "Operação bem preparada", tone: "ok" };
+
+    // Pacote sugerido: só para o time comercial (não aparece para o lead)
+    const pacote = {
+      chat: true,
+      digital: lacuna(a, "site"),
+      ia: a.atendimento === "atendente" || a.atendimento === "equipe"
+    };
+    const pacoteTexto = ["Chat Commerce", pacote.digital ? "Digital Store" : null, pacote.ia ? "Sales AI" : null].filter(Boolean).join(" + ");
+
+    const avisos = [];
+    const st = erpStatus(a.erp);
+    if (st === "parcial") avisos.push("Linx Big: a integração é por banco de dados. Validar os detalhes na conversa.");
+    if (st === "nao_integrado") avisos.push("ERP fora da lista integrada" + (a.erp === "outro" && a.erpOutro ? " (" + a.erpOutro + ")" : "") + ": verificar integração.");
+    if (st === "integrado") avisos.push("ERP com integração nativa.");
+
+    return { frentes, inercia: frentes.map(f => f.inercia).filter(Boolean).slice(0, 2), areas: ar, comparativo: comparativo(a), indice, banda, pacote, pacoteTexto, avisos, totalFrentes: frentes.length };
+  }
+
+  function resultado(a, info) {
+    const farmacia = isFarmacia(info);
+    const c = classe(a.faturamento, farmacia);
+    return {
+      d: diagnosticar(a), classe: c, farmacia,
+      cta: c === "A" || c === "B" ? "especialista" : "analise",
+      flags: {
+        cnpj_validado: !!info,
+        cnae_verificado: farmacia !== null,
+        diverge_porte: divergePorte(info, a.faturamento)
+      }
+    };
+  }
+
+  // ───────────────────────── Mensagem do WhatsApp ─────────────────────────
+  function mensagemWhatsApp(a, nomeFarmacia, d) {
+    const erp = a.erp === "outro" && a.erpOutro ? a.erpOutro : optLabel("erp", a.erp);
+    const top = d.frentes.slice(0, 3).map(f => f.nome).join(", ");
+    const fat = Q.faturamento.options.find(o => o.id === a.faturamento);
+    const at = Q.atendimento.options.find(o => o.id === a.atendimento);
+    return [
+      "Olá! Fiz o diagnóstico da Elevar para a " + nomeFarmacia + ".",
+      "Faturamento: " + (fat ? fat.msg : "-"),
+      "ERP: " + erp,
+      "Atendimento: " + (at ? at.msg : "-"),
+      "Principais frentes: " + top,
+      "Quero entender como a Elevar pode me ajudar."
+    ].join("\n");
+  }
+
+  const api = { Q, STEPS, ERP_INTEGRADOS, CNAE_FARMACIA, optLabel, erpStatus, classe, isFarmacia, divergePorte, diagnosticar, resultado, mensagemWhatsApp };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  root.EL_ENGINE = api;
+})(typeof window !== "undefined" ? window : globalThis);
