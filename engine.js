@@ -19,7 +19,6 @@
     erp: {
       id: "erp", step: 2,
       title: "Qual sistema a farmácia usa?",
-      helper: "O programa de caixa e estoque da loja (ERP).",
       options: [
         { id: "alpha7", label: "Alpha7" },
         { id: "inova", label: "Inova Farma" },

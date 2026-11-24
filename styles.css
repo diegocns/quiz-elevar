@@ -331,25 +331,72 @@ details.more[open] summary { margin-bottom: 10px; }
 
 .cta-inline { margin-top: 16px; }
 
-/* ───── Prova social em vídeo: carrossel no celular, 3 colunas no desktop ───── */
+
+/* ───── Ajustes de leitura (24/11): quebras de linha, opções mais leves, botões em uma linha ───── */
+h1, h2, h3 { text-wrap: balance; }
+p, .lead, .helper, .rs-list li { text-wrap: pretty; }
+.intro .hl, .proof .hl { white-space: nowrap; }
+.q h2 { font-size: clamp(20px, 5.4vw, 30px); line-height: 1.2; }
+.q .helper { margin-bottom: 14px; }
+.opt { min-height: 50px; padding: 12px 14px; gap: 12px; margin-bottom: 8px; background: rgba(255, 255, 255, .025); border-color: rgba(255, 255, 255, .07); font: 400 15px/1.4 var(--font); color: var(--ink2); }
+.opt:hover { border-color: rgba(255, 255, 255, .16); }
+.opt .dot { width: 18px; height: 18px; border-width: 1.5px; }
+.opt.sel { color: var(--ink); background: rgba(253, 0, 113, .08); border-color: rgba(253, 0, 113, .7); }
+.opt.multi.sel .dot::after { width: 5px; height: 9px; border-width: 0 2px 2px 0; }
+.opt:not(.multi).sel .dot::after { width: 7px; height: 7px; }
+.lsteps { grid-template-columns: minmax(0, 1fr); }
+.lsteps li { min-width: 0; }
+.ls-t b { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35; }
+.btn { white-space: nowrap; }
+@media (max-width: 420px) {
+  .btn { font-size: 15px; padding: 14px 12px; gap: 8px; }
+  .btn svg { width: 18px; height: 18px; }
+  .cta-card { padding: 20px 14px; }
+}
+
+/* ───── Prova social: carrossel infinito com vídeo dos dois lados ───── */
 .proof { margin-top: 44px; padding-top: 34px; border-top: 1px solid var(--line); text-align: center; }
 .proof h2 { font-size: clamp(24px, 6.4vw, 34px); line-height: 1.15; font-weight: 800; }
 .proof > p { color: var(--ink2); font-size: 15px; margin: 12px auto 0; max-width: 560px; }
-.vcar { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 24px -20px 0; padding: 0 20px 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
-.vcar::-webkit-scrollbar { display: none; }
-.vcard { flex: 0 0 78%; scroll-snap-align: center; position: relative; aspect-ratio: 9 / 16; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: #0B111C; }
+.vstage { --vw: min(58vw, 290px); position: relative; height: calc(var(--vw) * 16 / 9); margin: 24px -20px 0; overflow: hidden; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.vtrack { position: absolute; inset: 0; }
+.vcard { position: absolute; top: 0; left: 50%; width: var(--vw); aspect-ratio: 9 / 16; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: #0B111C; transform: translateX(-50%); transition: transform .45s cubic-bezier(.2, .8, .2, 1), opacity .45s; }
+.vcard[data-pos="c"] { z-index: 2; opacity: 1; }
+.vcard[data-pos="l"] { z-index: 1; opacity: .35; cursor: pointer; transform: translateX(calc(-50% - 82%)) scale(.84); }
+.vcard[data-pos="r"] { z-index: 1; opacity: .35; cursor: pointer; transform: translateX(calc(-50% + 82%)) scale(.84); }
+.vcard:not([data-pos="c"]) .vbtn { display: none; }
 .vplay { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: none; cursor: pointer; }
-.vplay img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-.vbtn { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; background: var(--pink); display: grid; place-items: center; box-shadow: 0 10px 30px -8px rgba(253, 0, 113, .7); transition: transform .15s; }
+.vplay img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; -webkit-user-drag: none; }
+.vbtn { position: absolute; left: 50%; top: 50%; width: 62px; height: 62px; margin: -31px 0 0 -31px; border-radius: 50%; background: var(--pink); display: grid; place-items: center; box-shadow: 0 10px 30px -8px rgba(253, 0, 113, .7); transition: transform .15s; }
 .vplay:hover .vbtn { transform: scale(1.06); }
 .vbtn svg { width: 26px; height: 26px; margin-left: 3px; fill: #fff; }
 .vcard iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-.vdots { display: flex; gap: 6px; justify-content: center; margin: 14px 0 22px; }
+.varrow { position: absolute; top: 50%; z-index: 3; width: 42px; height: 42px; margin-top: -21px; border-radius: 50%; border: 1px solid var(--line2); background: rgba(7, 12, 20, .78); color: #fff; display: grid; place-items: center; cursor: pointer; transition: background .15s; }
+.varrow:hover { background: rgba(253, 0, 113, .85); }
+.varrow svg { width: 20px; height: 20px; }
+.varrow.prev { left: 10px; } .varrow.next { right: 10px; }
+.vdots { display: flex; gap: 6px; justify-content: center; margin: 14px 0 4px; }
 .vdots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, .22); transition: all .2s; }
 .vdots i.on { width: 20px; border-radius: 4px; background: var(--pink); }
-@media (min-width: 900px) {
-  .vcar { overflow: visible; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 28px 0 0; padding: 0; }
-  .vcard { flex: none; }
-  .vdots { display: none; }
-  .proof .btn { max-width: 380px; margin: 30px auto 0; }
-}
+@media (min-width: 900px) { .vstage { margin: 28px 0 0; } .varrow.prev { left: 60px; } .varrow.next { right: 60px; } }
+
+/* ───── O preço de não mudar: duas colunas lado a lado ───── */
+.vs2 { border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--card); }
+.vs2-head { display: grid; grid-template-columns: 1fr 1fr; }
+.vs2-head .chip2 { margin: 0; border-radius: 0; padding: 11px 6px; text-align: center; font-size: 11px; }
+.vs2-row { border-top: 1px solid var(--line); }
+.vs2-row > small { display: block; padding: 9px 12px 7px; text-align: center; color: var(--mute); font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.vs2-cells { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.vs2-cells .c { display: flex; gap: 8px; align-items: flex-start; padding: 2px 10px 12px; }
+.vs2-cells .c.no { background: rgba(255, 77, 109, .06); border-right: 1px solid var(--line); }
+.vs2-cells .c.yes { background: rgba(198, 244, 50, .05); }
+.vs2-cells .c b { font-size: 13px; font-weight: 600; line-height: 1.35; text-wrap: pretty; }
+.vs2 .vs-ic { width: 18px; height: 18px; font-size: 10px; margin-top: 1px; }
+.vs2-sum { border-top: 1px solid var(--line); }
+.vs2-sum .c { flex-direction: column; gap: 0; padding: 12px; }
+.vs2-sum small { font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.vs2-sum .no small, .vs2-sum .no .vs-big b { color: #FF8FA3; }
+.vs2-sum .yes small, .vs2-sum .yes .vs-big b { color: var(--lime); }
+.vs2-sum .vs-big { margin-top: 4px; gap: 6px; flex-wrap: wrap; }
+.vs2-sum .vs-big b { font-size: 30px; }
+.vs2-sum .vs-big span { font-size: 12.5px; }

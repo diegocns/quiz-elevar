@@ -117,9 +117,12 @@
       <section class="proof">
         <h2>Veja o que mudou na rotina da Farmácia do Vaqueiro <span class="hl">com a Elevar.</span></h2>
         <p>Conheça a experiência real da Farmácia do Vaqueiro e descubra como a Elevar pode trazer mais segurança, controle e eficiência para sua operação.</p>
-        <div class="vcar" id="vcar">${VIDEOS.map(v => `<div class="vcard" data-id="${v.id}">${videoPoster(v)}</div>`).join("")}</div>
+        <div class="vstage" id="vstage">
+          <button class="varrow prev" id="vprev" type="button" aria-label="Vídeo anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <div class="vtrack" id="vtrack">${VIDEOS.map((v, k) => `<div class="vcard" data-k="${k}" data-id="${v.id}">${videoPoster(v)}</div>`).join("")}</div>
+          <button class="varrow next" id="vnext" type="button" aria-label="Próximo vídeo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
+        </div>
         <div class="vdots" id="vdots" aria-hidden="true">${VIDEOS.map((_, i) => `<i class="${i === 0 ? "on" : ""}"></i>`).join("")}</div>
-        <button class="btn" id="start2" type="button">Começar meu diagnóstico</button>
       </section>
     </main>`, { hero: true });
     startRotator("rot", BANNER);
@@ -129,26 +132,41 @@
       go("#/p/" + STEPS[0]);
     };
     $("start").onclick = begin;
-    $("start2").onclick = begin;
 
-    // play sob demanda: troca a capa pelo player; volta as outras capas
-    const car = $("vcar");
-    car.onclick = e => {
-      const b = e.target.closest(".vplay"); if (!b) return;
-      car.querySelectorAll(".vcard").forEach(c => {
-        const v = VIDEOS.find(x => x.id === c.dataset.id);
-        if (c.querySelector("iframe")) c.innerHTML = videoPoster(v);
+    // carrossel infinito: vídeo principal no centro, um de cada lado (opacidade menor), setas e arrastar
+    const n = VIDEOS.length, cards = [...document.querySelectorAll("#vtrack .vcard")];
+    let cur = 0, x0 = null, dragged = false;
+    const layout = () => {
+      cards.forEach((c, k) => {
+        let r = (k - cur + n) % n; if (r > n / 2) r -= n;
+        c.dataset.pos = r === 0 ? "c" : r < 0 ? "l" : "r";
+        c.setAttribute("aria-hidden", r !== 0 ? "true" : "false");
       });
-      const card = b.closest(".vcard"), v = VIDEOS.find(x => x.id === b.dataset.v);
-      card.innerHTML = `<iframe src="https://player.cloudinary.com/embed/?cloud_name=mqah19j9&public_id=${v.id}&autoplay=true&player[autoplay]=true" title="${esc(v.titulo)}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen loading="lazy"></iframe>`;
+      $("vdots").querySelectorAll("i").forEach((d, k) => d.classList.toggle("on", k === cur));
+    };
+    const stopAll = () => cards.forEach(c => { if (c.querySelector("iframe")) c.innerHTML = videoPoster(VIDEOS[+c.dataset.k]); });
+    const goTo = k => { const nk = (k % n + n) % n; if (nk === cur) return; stopAll(); cur = nk; layout(); };
+    $("vprev").onclick = () => goTo(cur - 1);
+    $("vnext").onclick = () => goTo(cur + 1);
+    $("vtrack").onclick = e => {
+      if (dragged) { dragged = false; return; }
+      const card = e.target.closest(".vcard"); if (!card) return;
+      const k = +card.dataset.k;
+      if (k !== cur) { goTo(k); return; }
+      if (!e.target.closest(".vplay")) return;
+      const v = VIDEOS[k];
+      card.innerHTML = `<iframe src="https://player.cloudinary.com/embed/?cloud_name=mqah19j9&public_id=${v.id}&autoplay=true&player[autoplay]=true" title="${esc(v.titulo)}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
       track("video_play", { video: v.id });
     };
-    // pontinhos do carrossel (celular)
-    car.addEventListener("scroll", () => {
-      const first = car.querySelector(".vcard"); if (!first) return;
-      const step = first.offsetWidth + 12, i = Math.max(0, Math.min(VIDEOS.length - 1, Math.round(car.scrollLeft / step)));
-      $("vdots").querySelectorAll("i").forEach((d, k) => d.classList.toggle("on", k === i));
-    }, { passive: true });
+    const stage = $("vstage");
+    stage.addEventListener("pointerdown", e => { x0 = e.clientX; dragged = false; });
+    stage.addEventListener("pointerup", e => {
+      if (x0 === null) return;
+      const dx = e.clientX - x0; x0 = null;
+      if (Math.abs(dx) > 40) { dragged = true; goTo(cur + (dx < 0 ? 1 : -1)); setTimeout(() => { dragged = false; }, 350); }
+    });
+    stage.addEventListener("pointercancel", () => { x0 = null; });
+    layout();
   }
 
   // Faixa dinâmica (intro e resultado): alterna mensagens a cada ~3s (parada se o usuário prefere menos movimento)
@@ -447,13 +465,10 @@
 
     const cmp = d.comparativo;
     const cmpHtml = cmp.length ? `<section class="sec"><h2 class="rv" ${dly(cmpT)}>O preço de não mudar</h2>
-      <div class="vs">
-        <div class="vs-card no rv" ${dly(cmpT + 0.1)}><span class="chip2 no">Se nada mudar</span>
-          ${cmp.map(r => `<div class="vs-row"><span class="vs-ic">✕</span><div><small>${esc(r.nome)}</small><b>${esc(r.hoje)}</b></div></div>`).join("")}
-          <div class="vs-sum"><small>Deixado na mesa</small><div class="vs-big"><b>${cmp.length}</b><span>${cmp.length === 1 ? "ponto em aberto" : "pontos em aberto"}</span></div></div></div>
-        <div class="vs-card yes rv" ${dly(cmpT + 0.3)}><span class="chip2 yes">★ Com a Elevar</span>
-          ${cmp.map(r => `<div class="vs-row"><span class="vs-ic">✓</span><div><small>${esc(r.nome)}</small><b>${esc(r.com)}</b></div></div>`).join("")}
-          <div class="vs-sum"><small>Potencial com a Elevar</small><div class="vs-big"><b>+${cmp.length}</b><span>${cmp.length === 1 ? "ponto atendido" : "pontos atendidos"}</span></div></div></div>
+      <div class="vs2 rv" ${dly(cmpT + 0.1)}>
+        <div class="vs2-head"><span class="chip2 no">Se nada mudar</span><span class="chip2 yes">★ Com a Elevar</span></div>
+        ${cmp.map(r => `<div class="vs2-row"><small>${esc(r.nome)}</small><div class="vs2-cells"><div class="c no"><span class="vs-ic">✕</span><b>${esc(r.hoje)}</b></div><div class="c yes"><span class="vs-ic">✓</span><b>${esc(r.com)}</b></div></div></div>`).join("")}
+        <div class="vs2-cells vs2-sum"><div class="c no"><small>Deixado na mesa</small><div class="vs-big"><b>${cmp.length}</b><span>${cmp.length === 1 ? "ponto em aberto" : "pontos em aberto"}</span></div></div><div class="c yes"><small>Potencial com a Elevar</small><div class="vs-big"><b>+${cmp.length}</b><span>${cmp.length === 1 ? "ponto atendido" : "pontos atendidos"}</span></div></div></div>
       </div></section>` : "";
 
     const resumoHtml = `<section class="resumo rv" ${dly(resT)}>
