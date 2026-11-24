@@ -76,12 +76,19 @@
       if (miss) return go("#/p/" + miss);
       return q === "contato" ? renderContato() : renderQuestion(q);
     }
-    if (h === "analisando") return S.leadSent ? renderAnalisando() : go("#/p/contato");
-    if (h === "resultado") return S.leadSent ? renderResultado() : go("#/p/contato");
+    if (h === "analisando") return S.leadSent && S.cnpjInfo ? renderAnalisando() : go("#/p/contato");
+    if (h === "resultado") return S.leadSent && S.cnpjInfo ? renderResultado() : go("#/p/contato");
     go("#/");
   }
   window.addEventListener("hashchange", route);
-  const answered = q => { const v = S.answers[q]; return q === "gaps" ? Array.isArray(v) && v.length > 0 : !!v && (q !== "erp" || v !== "outro" || (S.answers.erpOutro || "").trim().length >= 2); };
+  const OUTRO = { erp: "erpOutro", sistema: "sistemaOutro" };
+  const answered = q => {
+    const v = S.answers[q];
+    if (q === "gaps") return Array.isArray(v) && v.length > 0;
+    if (!v) return false;
+    if (OUTRO[q] && v === "outro") return (S.answers[OUTRO[q]] || "").trim().length >= 2;
+    return true;
+  };
   function firstMissing(upTo) {
     for (const q of STEPS) { if (q === upTo) return null; if (!answered(q)) return q; }
     return null;
@@ -90,26 +97,58 @@
   const prevHash = q => (STEPS.indexOf(q) === 0 ? "#/" : "#/p/" + STEPS[STEPS.indexOf(q) - 1]);
 
   // ───────── intro ─────────
+  // Vídeos de prova social (os mesmos da LP da Elevar, no player da Cloudinary). Só carregam quando o lead toca no play.
+  const VIDEOS = [
+    { id: "ELEVAR_CORTE_01", poster: "assets/depoimento-01.jpg", titulo: "Implementação rápida e mais segurança no WhatsApp" },
+    { id: "ELEVAR_CORTE_02", poster: "assets/depoimento-02.jpg", titulo: "Mais dados para tomar decisões" },
+    { id: "ELEVAR_CORTE_03", poster: "assets/depoimento-03.jpg", titulo: "Vale a pena implementar a Elevar?" }
+  ];
+  const PLAY_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5a2 2 0 0 1 3-1.7l12 7a2 2 0 0 1 0 3.4l-12 7A2 2 0 0 1 5 19z"/></svg>';
+  const videoPoster = v => `<button class="vplay" type="button" data-v="${v.id}" aria-label="Reproduzir vídeo: ${esc(v.titulo)}"><img src="${v.poster}" alt="" width="640" height="1138" loading="lazy" decoding="async" /><span class="vbtn">${PLAY_SVG}</span></button>`;
+
   function renderIntro() {
     track("page_view");
     shell(`<main class="intro fade">
       <span class="eyebrow live"><i class="pulse"></i><span class="rot" id="rot">Diagnóstico gratuito para farmácias</span></span>
       <h1>Descubra onde sua farmácia está <span class="hl">perdendo vendas</span></h1>
-      <p class="lead">Em 2 minutos, você vê onde clientes desistem por demora no atendimento, o que falta para vender mais pelo WhatsApp e pelo site e por onde começar a recuperar venda.</p>
+      <p class="lead">Em 2 minutos, faça o diagnóstico gratuito e veja, ponto a ponto, o que você precisa fazer para aumentar o faturamento da sua farmácia.</p>
       <button class="btn" id="start" type="button">Começar meu diagnóstico</button>
-      <div class="stats">
-        <div><b>+1.020</b><span>canais digitais implantados</span></div>
-        <div><b>+25%</b><span>aumento de faturamento</span></div>
-        <div><b>+32%</b><span>aumento de clientes</span></div>
-        <div><b>+21%</b><span>aumento de conversão</span></div>
-      </div>
-      <p class="stats-note">Resultados de clientes Elevar. Variam conforme a operação.</p>
+
+      <section class="proof">
+        <h2>Veja o que mudou na rotina da Farmácia do Vaqueiro <span class="hl">com a Elevar.</span></h2>
+        <p>Conheça a experiência real da Farmácia do Vaqueiro e descubra como a Elevar pode trazer mais segurança, controle e eficiência para sua operação.</p>
+        <div class="vcar" id="vcar">${VIDEOS.map(v => `<div class="vcard" data-id="${v.id}">${videoPoster(v)}</div>`).join("")}</div>
+        <div class="vdots" id="vdots" aria-hidden="true">${VIDEOS.map((_, i) => `<i class="${i === 0 ? "on" : ""}"></i>`).join("")}</div>
+        <button class="btn" id="start2" type="button">Começar meu diagnóstico</button>
+      </section>
     </main>`, { hero: true });
     startRotator("rot", BANNER);
-    $("start").onclick = () => {
+
+    const begin = () => {
       if (!S.started) { S.started = true; save(); track("wizard_start"); }
-      go("#/p/faturamento");
+      go("#/p/" + STEPS[0]);
     };
+    $("start").onclick = begin;
+    $("start2").onclick = begin;
+
+    // play sob demanda: troca a capa pelo player; volta as outras capas
+    const car = $("vcar");
+    car.onclick = e => {
+      const b = e.target.closest(".vplay"); if (!b) return;
+      car.querySelectorAll(".vcard").forEach(c => {
+        const v = VIDEOS.find(x => x.id === c.dataset.id);
+        if (c.querySelector("iframe")) c.innerHTML = videoPoster(v);
+      });
+      const card = b.closest(".vcard"), v = VIDEOS.find(x => x.id === b.dataset.v);
+      card.innerHTML = `<iframe src="https://player.cloudinary.com/embed/?cloud_name=mqah19j9&public_id=${v.id}&autoplay=true&player[autoplay]=true" title="${esc(v.titulo)}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen loading="lazy"></iframe>`;
+      track("video_play", { video: v.id });
+    };
+    // pontinhos do carrossel (celular)
+    car.addEventListener("scroll", () => {
+      const first = car.querySelector(".vcard"); if (!first) return;
+      const step = first.offsetWidth + 12, i = Math.max(0, Math.min(VIDEOS.length - 1, Math.round(car.scrollLeft / step)));
+      $("vdots").querySelectorAll("i").forEach((d, k) => d.classList.toggle("on", k === i));
+    }, { passive: true });
   }
 
   // Faixa dinâmica (intro e resultado): alterna mensagens a cada ~3s (parada se o usuário prefere menos movimento)
@@ -133,12 +172,13 @@
       const sel = q.multi ? (cur || []).includes(o.id) : cur === o.id;
       return `<button type="button" class="opt ${q.multi ? "multi" : ""} ${sel ? "sel" : ""}" data-v="${o.id}" aria-pressed="${sel}"><span class="dot"></span><span>${esc(o.label)}</span></button>`;
     }).join("");
-    const outro = qid === "erp" ? `<div class="outro-box" id="outro" ${cur === "outro" ? "" : "hidden"}>
-        <label class="small muted" for="erpOutro" style="display:block;margin-bottom:6px">Qual ERP?</label>
-        <input class="input" id="erpOutro" maxlength="60" placeholder="Digite o nome do seu ERP" autocomplete="off" value="${esc(S.answers.erpOutro || "")}" /></div>` : "";
+    const ok = OUTRO[qid];
+    const outro = ok ? `<div class="outro-box" id="outro" ${cur === "outro" ? "" : "hidden"}>
+        <label class="small muted" for="${ok}" style="display:block;margin-bottom:6px">${qid === "erp" ? "Qual ERP?" : "Qual sistema?"}</label>
+        <input class="input" id="${ok}" maxlength="60" placeholder="${qid === "erp" ? "Digite o nome do seu ERP" : "Digite o nome do sistema"}" autocomplete="off" value="${esc(S.answers[ok] || "")}" /></div>` : "";
     const needBtn = true;
     shell(`<main class="q fade">
-      <div class="step">Pergunta ${idx} de 4</div>
+      <div class="step">Pergunta ${idx} de ${STEPS.length - 1}</div>
       <h2>${esc(q.title)}</h2>${q.helper ? `<p class="helper">${esc(q.helper)}</p>` : ""}
       <div class="opts">${opts}</div>${outro}
     </main>
@@ -166,16 +206,16 @@
           S.answers[qid] = v;
           app.querySelectorAll(".opt").forEach(x => { x.classList.toggle("sel", x === b); x.setAttribute("aria-pressed", x === b); });
           save();
-          if (qid === "erp") {
+          if (OUTRO[qid]) {
             const box = $("outro");
-            if (v === "outro") { box.hidden = false; $("erpOutro").focus(); refresh(); return; }
-            box.hidden = true; delete S.answers.erpOutro; save();
+            if (v === "outro") { box.hidden = false; $(OUTRO[qid]).focus(); refresh(); return; }
+            box.hidden = true; delete S.answers[OUTRO[qid]]; save();
           }
           refresh();
         }
       };
     });
-    if (qid === "erp") $("erpOutro").oninput = e => { S.answers.erpOutro = e.target.value; save(); refresh(); };
+    if (OUTRO[qid]) $(OUTRO[qid]).oninput = e => { S.answers[OUTRO[qid]] = e.target.value; save(); refresh(); };
     if (next) next.onclick = advance;
   }
 
@@ -207,10 +247,14 @@
     return { razao: j.razao_social || "", fantasia: j.nome_fantasia || "", uf: j.uf || "", cidade: j.municipio || "", cnae: j.cnae_fiscal, cnaeDesc: j.cnae_fiscal_descricao || "",
       porte: j.porte || j.descricao_porte || "", situacao: j.descricao_situacao_cadastral || "", capital: j.capital_social, abertura: j.data_inicio_atividade || "" };
   }
-  function lookupCnpj(d) {
+  function fetchProvider(url) {
     const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 7000);
-    return fetch("https://brasilapi.com.br/api/cnpj/v1/" + d, { signal: ctl.signal })
-      .then(r => (r.ok ? r.json() : Promise.reject(r.status))).then(normCnpj).finally(() => clearTimeout(t));
+    return fetch(url, { signal: ctl.signal })
+      .then(r => (r.ok ? r.json() : Promise.reject({ status: r.status }))).then(normCnpj).finally(() => clearTimeout(t));
+  }
+  function lookupCnpj(d) {
+    return fetchProvider("https://brasilapi.com.br/api/cnpj/v1/" + d).catch(e1 =>
+      fetchProvider("https://minhareceita.org/" + d).catch(e2 => Promise.reject({ notFound: !!(e1 && e1.status === 404 && e2 && e2.status === 404) })));
   }
 
   function renderContato() {
@@ -231,22 +275,32 @@
     <div class="sticky"><div class="wrap"><div class="nav"><button class="btn ghost" id="back" type="button">Voltar</button><button class="btn" id="send" type="button">Ver meu diagnóstico</button></div></div></div>`,
       { step: 5, sticky: true });
 
-    $("back").onclick = () => go("#/p/gaps");
+    $("back").onclick = () => go("#/p/" + STEPS[STEPS.length - 2]);
     const hint = (id, msg, cls) => { const h = $("h-" + id); h.textContent = msg || ""; h.className = "hint" + (cls ? " " + cls : ""); };
-    let lastCnpj = "";
-    const runLookup = () => {
-      const d = $("cnpj").value.replace(/\D/g, "");
-      if (d.length < 14) { S.cnpjInfo = null; lookupP = null; hint("cnpj", ""); return; }
-      if (!cnpjValido(d)) { S.cnpjInfo = null; hint("cnpj", "CNPJ inválido", "bad"); return; }
-      if (d === lastCnpj) return;
-      lastCnpj = d; hint("cnpj", "Consultando CNPJ…");
+    let lastCnpj = "", seq = 0;
+    const digits = () => $("cnpj").value.replace(/\D/g, "");
+    const infoOk = d => !!(S.cnpjInfo && S.cnpjInfo.cnpj === d && S.cnpjInfo.cnae != null);
+    const runLookup = force => {
+      const d = digits();
+      if (d.length < 14) { S.cnpjInfo = null; lookupP = null; lastCnpj = ""; hint("cnpj", ""); return; }
+      if (!cnpjValido(d)) { S.cnpjInfo = null; lookupP = null; lastCnpj = ""; hint("cnpj", "CNPJ inválido", "bad"); return; }
+      if (d === lastCnpj && !force) return;
+      lastCnpj = d; S.cnpjInfo = null; hint("cnpj", "Consultando CNPJ…");
+      const my = ++seq;
       lookupP = lookupCnpj(d).then(info => {
-        S.cnpjInfo = info; save();
+        if (my !== seq) return null;
+        info.cnpj = d; S.cnpjInfo = info; save();
         const nome = titleCase(info.fantasia || info.razao);
-        hint("cnpj", nome ? "✓ " + nome : "CNPJ válido", "ok");
+        hint("cnpj", nome ? "✓ " + nome : "✓ CNPJ encontrado", "ok");
         track("cnpj_lookup", { found: true, uf: info.uf || null });
         return info;
-      }).catch(() => { S.cnpjInfo = null; hint("cnpj", "CNPJ válido", "ok"); track("cnpj_lookup", { found: false }); return null; });
+      }).catch(err => {
+        if (my !== seq) return null;
+        S.cnpjInfo = null;
+        hint("cnpj", err && err.notFound ? "CNPJ não encontrado. Confira os números." : "Não foi possível validar o CNPJ agora. Toque em Ver meu diagnóstico para tentar de novo.", "bad");
+        track("cnpj_lookup", { found: false });
+        return null;
+      });
     };
     $("cnpj").oninput = e => { e.target.value = maskCnpj(e.target.value); e.target.classList.remove("err"); runLookup(); };
     $("whatsapp").oninput = e => { e.target.value = maskTel(e.target.value); e.target.classList.remove("err"); };
@@ -265,8 +319,16 @@
       Object.keys(errs).forEach(k => { hint(k, errs[k], errs[k] ? "bad" : ""); if (k !== "lgpd" && $(k)) $(k).classList.toggle("err", !!errs[k]); });
       if (k0(errs)) { const first = Object.keys(errs).find(k => errs[k]); if ($(first)) $(first).focus(); return; }
       S.contato = v; save();
-      const btn = $("send"); btn.disabled = true; btn.textContent = "Gerando diagnóstico…";
-      if (lookupP) { try { await Promise.race([lookupP, new Promise(r => setTimeout(r, 3500))]); } catch (e) { /* segue sem consulta */ } }
+      const btn = $("send"); btn.disabled = true; btn.textContent = "Validando CNPJ…";
+      const d = digits(), wait = p => Promise.race([p, new Promise(r => setTimeout(r, 15000))]).catch(() => null);
+      if (!infoOk(d) && lookupP && d === lastCnpj) await wait(lookupP);
+      if (!infoOk(d)) { runLookup(true); await wait(lookupP); }
+      if (!infoOk(d)) {
+        btn.disabled = false; btn.textContent = "Ver meu diagnóstico";
+        if (!$("h-cnpj").classList.contains("bad")) hint("cnpj", "Não foi possível validar o CNPJ agora. Tente novamente.", "bad");
+        $("cnpj").classList.add("err"); return;
+      }
+      btn.textContent = "Gerando diagnóstico…";
       S.leadSent = true; save();
       sendLead();
       go("#/analisando");
@@ -281,7 +343,7 @@
       lead_id: S.id, timestamp: new Date().toISOString(),
       contato: { nome: S.contato.nome, whatsapp: S.contato.whatsapp, email: S.contato.email, cnpj: S.contato.cnpj, consentimento: !!S.contato.lgpd },
       cnpj: { razao_social: i.razao || "", nome_fantasia: i.fantasia || "", uf: i.uf || "", cidade: i.cidade || "", cnae: i.cnae || "", cnae_descricao: i.cnaeDesc || "", porte: i.porte || "", situacao: i.situacao || "", capital_social: i.capital || "", abertura: i.abertura || "" },
-      respostas: { faturamento: a.faturamento, erp: a.erp === "outro" ? "outro: " + (a.erpOutro || "") : a.erp, erp_integrado: E.erpStatus(a.erp), atendimento: a.atendimento, ja_tem: a.gaps },
+      respostas: { faturamento: a.faturamento, erp: a.erp === "outro" ? "outro: " + (a.erpOutro || "") : a.erp, erp_integrado: E.erpStatus(a.erp), atendimento: a.atendimento, ja_tem: a.gaps, sistema_anterior: a.sistema === "outro" ? "outro: " + (a.sistemaOutro || "") : a.sistema },
       diagnostico: { classe: r.classe, indice: r.d.indice, faixa: r.d.banda.id, frentes: r.d.frentes.map(f => f.id), areas: r.d.areas.reduce((o, x) => { o[x.id] = x.valor; return o; }, {}) },
       comercial: { pacote_sugerido: r.d.pacoteTexto, pacote: r.d.pacote, observacoes: r.d.avisos, frentes_prioritarias: r.d.frentes.slice(0, 3).map(f => f.nome) },
       flags: r.flags, utm: S.utm
@@ -300,7 +362,7 @@
     const fat = E.Q.faturamento.options.find(o => o.id === a.faturamento);
     const erp = a.erp === "outro" ? (a.erpOutro || "Outro") : E.optLabel("erp", a.erp);
     const at = E.Q.atendimento.options.find(o => o.id === a.atendimento);
-    const rows = [["Faturamento", fat ? fat.label : "-"], ["Sistema", erp], ["Atendimento", at ? at.label : "-"], ["Diagnóstico", "Montando suas oportunidades"]];
+    const rows = [["Sistema", erp], ["Atendimento", at ? at.label : "-"], ["Faturamento", fat ? fat.label : "-"], ["Diagnóstico", "Montando suas oportunidades"]];
     shell(`<main class="loading2 fade"><span class="eyebrow">Analisando</span><h2>Montando seu diagnóstico</h2>
       <div class="lbar"><i id="lfill"></i></div>
       <ul class="lsteps">${rows.map((r, i) => `<li id="ls${i}"><span class="ls-dot"></span><span class="ls-t"><small>${r[0]}</small><b>${esc(r[1])}</b></span></li>`).join("")}</ul></main>`, { step: 5 });
@@ -357,13 +419,14 @@
     const primeiro = (S.contato.nome || "").split(" ")[0];
 
     if (R.classe === "DESQ") {
+      const empresa = titleCase(String(info.fantasia || info.razao || "").replace(/\s*\d{8,}$/, "")) || "Sua empresa";
       shell(`<main class="fade"><div class="desq">
-        <span class="eyebrow">Diagnóstico${primeiro ? " · " + esc(primeiro) : ""}</span>
-        <h1>A Elevar não é a solução ideal para o seu negócio agora.</h1>
-        <p>Nossa plataforma é feita para <b>farmácias</b>: ligamos o estoque do sistema ao WhatsApp, à loja online e ao atendimento automático.</p>
-        <p>${info.cnaeDesc ? "O CNPJ informado está registrado como “" + esc(info.cnaeDesc) + "”, fora do perfil de farmácia." : "Pelas informações do CNPJ, o negócio está fora do perfil de farmácia."} Por isso, não conseguimos montar um diagnóstico que faça sentido para você.</p>
-        <p class="muted small">Se o CNPJ informado não for o da farmácia, volte e refaça o diagnóstico com o CNPJ correto.</p>
-        <div style="display:grid;gap:10px;margin-top:18px"><a class="btn ghost" href="${esc(CFG.siteUrl || "#")}" target="_blank" rel="noopener">Conhecer a Elevar</a><button class="btn ghost" id="redo" type="button">Refazer com outro CNPJ</button></div>
+        <span class="eyebrow">Diagnóstico</span>
+        <h1>${esc(empresa)}, agradecemos o seu interesse.</h1>
+        <p>Ao consultar o CNPJ informado, identificamos que a atividade principal da empresa é “${esc(info.cnaeDesc || "outro segmento")}”.</p>
+        <p>A Elevar é uma plataforma desenvolvida exclusivamente para farmácias e, neste momento, entendemos que a nossa solução não é a mais indicada para o perfil da sua empresa.</p>
+        <p class="muted small">Se o CNPJ informado não corresponde à sua farmácia, você pode refazer o diagnóstico com o CNPJ correto.</p>
+        <div style="display:grid;gap:10px;margin-top:18px"><button class="btn" id="redo" type="button">Refazer com outro CNPJ</button><a class="btn ghost" href="${esc(CFG.siteUrl || "#")}" target="_blank" rel="noopener">Conhecer a Elevar</a></div>
       </div></main>`);
       $("redo").onclick = () => { S.leadSent = false; S.cnpjInfo = null; S.contato.cnpj = ""; save(); go("#/p/contato"); };
       return;

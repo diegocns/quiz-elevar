@@ -29,15 +29,27 @@
         { id: "outro", label: "Outro" }
       ]
     },
+    sistema: {
+      id: "sistema",
+      title: "Já usou algum sistema para organizar o WhatsApp?",
+      options: [
+        { id: "unico_contato", label: "Único Contato" },
+        { id: "suri", label: "Suri" },
+        { id: "pedbot", label: "Pedbot" },
+        { id: "nunca", label: "Nunca utilizei" },
+        { id: "outro", label: "Outro" }
+      ]
+    },
     atendimento: {
       id: "atendimento", step: 3,
       title: "Como é o atendimento no WhatsApp hoje?",
       options: [
         { id: "nao_vende", label: "Não vendo pelo WhatsApp", msg: "ainda não vende pelo WhatsApp" },
-        { id: "balcao", label: "O balcão atende tudo", msg: "o balcão atende tudo" },
-        { id: "atendente_ok", label: "Tenho atendente e dou conta do volume", msg: "tem atendente e dá conta do volume" },
-        { id: "atendente", label: "Tenho atendente, mas o volume é alto e perco mensagens", msg: "tem atendente, mas o volume é alto e perde mensagens" },
-        { id: "equipe", label: "Equipe grande, tudo manual", msg: "equipe grande, atendimento manual" }
+        { id: "balcao", label: "Tenho atendente, mas ele atende o balcão e o WhatsApp", msg: "tem atendente, mas ele atende o balcão e o WhatsApp" },
+        { id: "equipe", label: "Tenho vários atendentes no balcão e no WhatsApp, e todos os orçamentos são manuais", msg: "tem vários atendentes no balcão e no WhatsApp, com orçamentos manuais" },
+        { id: "atendente", label: "Tenho atendente, mas o volume de orçamentos é alto e às vezes o cliente fica sem resposta", msg: "tem atendente, mas o volume de orçamentos é alto e às vezes o cliente fica sem resposta" },
+        { id: "equipe_wa", label: "Tenho uma equipe só para o WhatsApp, com vários atendentes", msg: "tem equipe só para o WhatsApp, com vários atendentes" },
+        { id: "atendente_ok", label: "Tenho atendente só para o WhatsApp e as mensagens são respondidas a tempo", msg: "tem atendente só para o WhatsApp e responde a tempo" }
       ]
     },
     gaps: {
@@ -54,7 +66,7 @@
     }
   };
 
-  const STEPS = ["faturamento", "erp", "atendimento", "gaps", "contato"];
+  const STEPS = ["erp", "atendimento", "sistema", "gaps", "faturamento", "contato"];
 
   // ERPs com integração (proposta e calls). Linx Big: via banco de dados, API em desenvolvimento.
   const ERP_INTEGRADOS = ["alpha7", "inova", "trier", "digifarma"];
@@ -93,7 +105,7 @@
 
   // ───────────────────────── Frentes ─────────────────────────
   const NOTA_RANK = { "A+": 0, A: 1, B: 2 };
-  const manual = a => ["balcao", "atendente_ok", "atendente", "equipe"].includes(a.atendimento);
+  const manual = a => ["balcao", "atendente_ok", "atendente", "equipe", "equipe_wa"].includes(a.atendimento);
   // item "não marcado" = lacuna (se marcou "nenhum", todos são lacuna)
   const lacuna = (a, item) => !(a.gaps || []).includes(item);
 
@@ -101,7 +113,7 @@
     { id: "resposta", icon: "clock", nome: "Resposta rápida no WhatsApp",
       curto: "Fila e distribuição para ninguém ficar sem resposta.",
       stat: { n: "73%", t: "dos clientes desistem quando a resposta demora" },
-      on: a => manual(a), nota: a => ({ atendente: "A+", equipe: "A+", balcao: "A" }[a.atendimento] || "B") },
+      on: a => manual(a), nota: a => ({ atendente: "A+", equipe_wa: "A+", equipe: "A", balcao: "A" }[a.atendimento] || "B") },
     { id: "chat_erp", icon: "chat", nome: "Venda no WhatsApp ligada ao seu sistema",
       curto: "Preço, foto e estoque do seu sistema direto na conversa.",
       stat: { n: "8% → 25%", t: "dos atendimentos viram venda, num caso real" },
@@ -120,7 +132,7 @@
       on: a => lacuna(a, "site"), nota: () => "A+" },
     { id: "ia", icon: "bot", nome: "Atendimento automático nos picos",
       curto: "Responde na hora, de dia, de noite e quando a fila enche.",
-      on: a => a.atendimento === "atendente" || a.atendimento === "equipe", nota: a => (a.atendimento === "equipe" ? "A+" : "A") },
+      on: a => a.atendimento === "atendente" || a.atendimento === "equipe_wa", nota: a => (a.atendimento === "equipe_wa" ? "A+" : "A") },
     { id: "recompra", icon: "repeat", nome: "Cliente que volta a comprar",
       curto: "Lembra quem toma remédio de uso contínuo e quem largou a compra.",
       on: a => lacuna(a, "recompra"), nota: () => "A" },
@@ -137,17 +149,17 @@
 
   // Detalhe de cada oportunidade: "hoje" vem só do que o lead respondeu; "ajustes" vêm da proposta e das calls (sem números novos).
   const DETALHE = {
-    resposta: { hoje: a => ({ balcao: "O balcão atende o WhatsApp entre um cliente e outro.", atendente: "O volume é alto e mensagens ficam sem resposta.", equipe: "A equipe atende tudo no manual.", atendente_ok: "O atendente dá conta do volume hoje." }[a.atendimento] || null),
+    resposta: { hoje: a => ({ balcao: "O mesmo atendente cuida do balcão e do WhatsApp.", equipe: "Vários atendentes e todos os orçamentos são manuais.", atendente: "O volume de orçamentos é alto e às vezes o cliente fica sem resposta.", equipe_wa: "A equipe do WhatsApp trabalha sem fila automática.", atendente_ok: "O atendente dá conta do volume hoje." }[a.atendimento] || null),
       ajustes: ["Vários atendentes no mesmo número do WhatsApp", "Fila com distribuição automática entre a equipe", "Tela de supervisão: quem espera e há quanto tempo"] },
     chat_erp: { hoje: a => (a.atendimento === "nao_vende" ? "A farmácia ainda não vende pelo WhatsApp." : null),
       ajustes: ["Catálogo com foto e preço na própria conversa", "Carrinho e pagamento sem sair do WhatsApp", "Histórico de compras do cliente à mão"] },
     estoque: { hoje: () => null,
       ajustes: ["Produto, preço e quantidade na hora do atendimento", "Estoque mínimo: o produto sai da venda antes de acabar", "Mais de uma loja do mesmo dono: estoque somado"] },
-    manual: { hoje: a => (a.atendimento === "equipe" ? "A equipe atende tudo no manual." : null),
+    manual: { hoje: a => (a.atendimento === "equipe" ? "Todos os orçamentos são feitos à mão." : null),
       ajustes: ["Cupom e promoção aplicados na hora", "Resumo do pedido enviado para o cliente confirmar", "Pedido pronto para imprimir e separar"] },
     site: { hoje: () => "A farmácia não tem loja online onde o cliente compra sozinho.",
       ajustes: ["Loja com a sua marca, montada pela equipe da Elevar", "Cliente compra sozinho ou chama no WhatsApp", "Carrinho abandonado: lembra quem largou a compra"] },
-    ia: { hoje: a => ({ atendente: "O volume é alto e mensagens ficam sem resposta.", equipe: "A equipe atende tudo no manual." }[a.atendimento] || null),
+    ia: { hoje: a => ({ atendente: "O volume de orçamentos é alto e às vezes o cliente fica sem resposta." }[a.atendimento] || null),
       ajustes: ["Entende áudio, texto e imagem", "Passa para o atendente quando precisa", "Você define horários e jeito de falar"] },
     recompra: { hoje: () => "Não há lembrete para o cliente voltar a comprar.",
       ajustes: ["Lembrete automático de uso contínuo, no prazo que você escolher", "Lista de quem largou o carrinho, para o time chamar", "Cupom ou oferta junto do lembrete"] },
@@ -183,7 +195,7 @@
   // Índice = média ponderada das áreas. Pesos são julgamento comercial (atendimento pesa mais), não estatística.
   function areas(a) {
     const mk = item => ((a.gaps || []).includes(item) ? 100 : 20);
-    const atend = { nao_vende: 10, balcao: 30, atendente: 40, equipe: 45, atendente_ok: 90 }[a.atendimento];
+    const atend = { nao_vende: 10, balcao: 30, equipe: 35, atendente: 40, equipe_wa: 55, atendente_ok: 90 }[a.atendimento];
     return [
       { id: "atendimento", nome: "Atendimento", icon: "chat", peso: 0.30, valor: atend == null ? 30 : atend },
       { id: "loja", nome: "Loja online", icon: "site", peso: 0.25, valor: mk("site") },
@@ -198,9 +210,10 @@
     const out = [];
     const at = {
       nao_vende: ["Ainda não vende pelo WhatsApp", "O WhatsApp vira canal de venda, ligado ao estoque"],
-      balcao: ["O balcão atende o WhatsApp entre um cliente e outro", "Fila com vários atendentes e catálogo na conversa"],
-      atendente: ["Volume alto e mensagens sem resposta", "Fila distribuída e atendimento automático nos picos"],
-      equipe: ["Equipe grande, tudo no manual", "Distribuição automática, pedido e pagamento na conversa"]
+      balcao: ["O mesmo atendente cuida do balcão e do WhatsApp", "Fila com vários atendentes e catálogo na conversa"],
+      equipe: ["Vários atendentes e todos os orçamentos feitos à mão", "Distribuição automática, pedido e pagamento na conversa"],
+      atendente: ["Volume alto de orçamentos e cliente sem resposta", "Fila distribuída e atendimento automático nos picos"],
+      equipe_wa: ["Equipe do WhatsApp sem fila automática nem supervisão", "Fila distribuída e tela de supervisão em tempo real"]
     }[a.atendimento];
     if (at) out.push({ id: "atendimento", nome: "Atendimento", hoje: at[0], com: at[1] });
     if (lacuna(a, "site")) out.push({ id: "loja", nome: "Loja online", hoje: "Sem loja onde o cliente compra sozinho", com: "Loja online ligada ao estoque, com carrinho e pagamento" });
@@ -228,15 +241,19 @@
     const pacote = {
       chat: true,
       digital: lacuna(a, "site"),
-      ia: a.atendimento === "atendente" || a.atendimento === "equipe"
+      ia: a.atendimento === "atendente" || a.atendimento === "equipe_wa"
     };
-    const pacoteTexto = ["Chat Commerce", pacote.digital ? "Digital Store" : null, pacote.ia ? "Sales AI" : null].filter(Boolean).join(" + ");
+    const pacoteTexto = ["Chat Commerce", pacote.digital ? "Digital Store" : null, pacote.ia ? "Sales AI" : null].filter(Boolean).join(" + ") + (a.atendimento === "equipe" ? " · IA a avaliar" : "");
 
     const avisos = [];
     const st = erpStatus(a.erp);
     if (st === "parcial") avisos.push("Linx Big: a integração é por banco de dados. Validar os detalhes na conversa.");
     if (st === "nao_integrado") avisos.push("ERP fora da lista integrada" + (a.erp === "outro" && a.erpOutro ? " (" + a.erpOutro + ")" : "") + ": verificar integração.");
     if (st === "integrado") avisos.push("ERP com integração nativa.");
+    if (a.sistema && a.sistema !== "nunca") {
+      const nomes = { unico_contato: "Único Contato", suri: "Suri", pedbot: "Pedbot", outro: a.sistemaOutro || "outro sistema" };
+      avisos.push("Já usou " + nomes[a.sistema] + (a.sistema === "pedbot" ? " (operação encerrada em 30/09)" : "") + ": entender o que faltou e por que quer trocar.");
+    }
 
     return { frentes, inercia: frentes.map(f => f.inercia).filter(Boolean).slice(0, 2), areas: ar, comparativo: comparativo(a), indice, banda, pacote, pacoteTexto, avisos, totalFrentes: frentes.length };
   }
