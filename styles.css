@@ -481,3 +481,7 @@ p, .lead, .helper, .rs-list li { text-wrap: pretty; }
 /* Oportunidades enxutas: selo de caso real */
 .tag-caso { display: inline-block; margin-top: 8px; padding: 4px 10px; border-radius: 999px; background: rgba(198, 244, 50, .12); color: var(--lime); font-size: 11.5px; font-weight: 700; }
 .front2 h3 { margin-bottom: 8px; }
+
+/* Tela inicial: headline, sub e selo centralizados também no celular */
+.intro { text-align: center; }
+.intro .eyebrow { justify-content: center; }
