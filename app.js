@@ -199,13 +199,25 @@
       <div class="step">Pergunta ${idx} de ${STEPS.length - 1}</div>
       <h2>${esc(q.title)}</h2>${q.helper ? `<p class="helper">${esc(q.helper)}</p>` : ""}
       <div class="opts">${opts}</div>${outro}
+      <div class="insight" id="insight" aria-live="polite" hidden></div>
     </main>
     <div class="sticky"><div class="wrap"><div class="nav"><button class="btn ghost" id="back" type="button">Voltar</button><button class="btn" id="next" type="button" disabled>Continuar</button></div></div></div>`,
       { step: idx, sticky: true });
 
     const next = $("next");
     $("back").onclick = () => go(prevHash(qid));
-    const refresh = () => { if (next) next.disabled = !answered(qid); };
+    const showInsight = () => {
+      const box = $("insight"); if (!box) return;
+      const ins = E.insight(qid, S.answers);
+      if (!ins) { box.hidden = true; box.dataset.k = ""; return; }
+      const key = ins.n + ins.t;
+      if (box.dataset.k === key && !box.hidden) return;
+      box.dataset.k = key;
+      box.dataset.tone = ins.tone;
+      box.innerHTML = `<div class="ins-n">${esc(ins.n)}</div><p>${esc(ins.t)}</p>`;
+      box.hidden = false; box.classList.remove("pop"); void box.offsetWidth; box.classList.add("pop");
+    };
+    const refresh = () => { if (next) next.disabled = !answered(qid); showInsight(); };
     const advance = () => { track("step_completed", { step: qid, answer: JSON.stringify(S.answers[qid]) }); go("#/p/" + nextOf(qid)); };
     refresh();
 
@@ -277,10 +289,13 @@
 
   function renderContato() {
     const c = S.contato;
+    const dz = E.diagnosticar(S.answers);
     shell(`<main class="q fade">
-      <div class="step">Último passo</div>
-      <h2>Para onde enviamos o seu diagnóstico?</h2>
-      <p class="helper">Seu diagnóstico fica pronto logo em seguida.</p>
+      <div class="teaser">
+        <div class="tz-score" aria-hidden="true"><div><b class="blur" id="tzn">${dz.indice}</b><small>/100</small></div></div>
+        <div><h2>Sua nota já está pronta</h2><p>Preencha o formulário abaixo e veja onde sua farmácia está perdendo vendas.</p></div>
+      </div>
+      <h3 class="form-t">Para onde enviamos o seu diagnóstico?</h3>
       <form id="f" novalidate>
         <div class="field"><label for="cnpj">CNPJ da farmácia</label><input class="input" id="cnpj" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" value="${esc(c.cnpj)}" /><span class="hint" id="h-cnpj"></span></div>
         <div class="field"><label for="nome">Seu nome</label><input class="input" id="nome" autocomplete="name" placeholder="Nome e sobrenome" value="${esc(c.nome)}" /><span class="hint" id="h-nome"></span></div>
@@ -294,6 +309,11 @@
       { step: 5, sticky: true });
 
     $("back").onclick = () => go("#/p/" + STEPS[STEPS.length - 2]);
+    // nota borrada "calculando": troca o número a cada instante (parado se o usuário prefere menos movimento)
+    if (!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) {
+      clearInterval(rotTimer);
+      rotTimer = setInterval(() => { const n = $("tzn"); if (!n) return clearInterval(rotTimer); n.textContent = 10 + Math.floor(Math.random() * 88); }, 140);
+    }
     const hint = (id, msg, cls) => { const h = $("h-" + id); h.textContent = msg || ""; h.className = "hint" + (cls ? " " + cls : ""); };
     let lastCnpj = "", seq = 0;
     const digits = () => $("cnpj").value.replace(/\D/g, "");
@@ -455,20 +475,34 @@
     const top = d.frentes.slice(0, 3), rest = d.frentes.slice(3);
     const temNome = nome !== "minha farmácia";
     const quem = temNome ? `<span class="who">${esc(nome)}</span>` : `Sua <span class="who">farmácia</span>`;
+    const TITULOS = {
+      critica: q => `${q} está deixando muitas vendas na mesa.`,
+      relevante: q => `${q} tem espaço para vender bem mais.`,
+      parcial: q => `${q} tem uma boa base. Falta organizar para vender mais.`,
+      madura: q => `${q} está bem preparada para vender online.`
+    };
+    const titulo = (TITULOS[d.banda.id] || TITULOS.relevante)(quem);
 
     // tempos de entrada (s)
     let t = 0.55;
     const areasHtml = d.areas.map(x => { const h = `<div class="area rv" ${dly(t)}><span class="a-ic">${ic(x.icon)}</span><div class="a-main"><div class="a-top"><span>${esc(x.nome)}</span><b data-count="${x.valor}" data-suffix="%" data-delay="${Math.round(t * 1000) + 150}">0%</b></div><div class="bar"><i class="${barCls(x.valor)}" data-w="${x.valor}" data-delay="${Math.round(t * 1000) + 150}"></i></div></div></div>`; t += 0.08; return h; }).join("");
     const resT = t + 0.05, cmpT = resT + 0.3, opT = cmpT + 0.55; const secT = opT; t = opT + 0.2;
-    const topHtml = top.map(f => { const h = `<div class="front2 rv" ${dly(t)}><div class="f-head"><span class="f-ic">${ic(f.icon)}</span><span class="nota ${notaCls(f.nota)}">${f.nota}</span></div><h3>${esc(f.nome)}</h3>${f.stat ? `<div class="f-stat"><b>${esc(f.stat.n)}</b><span>${esc(f.stat.t)}</span></div>` : ""}<p>${esc(f.curto)}</p>${f.hoje ? `<div class="f-hoje"><small>Hoje</small><span>${esc(f.hoje)}</span></div>` : ""}<details class="f-aj"><summary><span>O que ajustar</span><i class="chev"></i></summary><ul>${f.ajustes.map(x => `<li>${esc(x)}</li>`).join("")}</ul></details></div>`; t += 0.12; return h; }).join("");
+    const topHtml = top.map(f => { const h = `<div class="front2 rv" ${dly(t)}><div class="f-head"><span class="f-ic">${ic(f.icon)}</span><span class="nota ${notaCls(f.nota)}">${f.nota}</span></div><h3>${esc(f.nome)}</h3>${f.stat ? `<div class="f-stat"><b>${esc(f.stat.n)}</b><span>${esc(f.stat.t)}</span></div>${f.stat.caso ? `<span class="tag-caso">Caso real com a Elevar</span>` : ""}` : ""}<details class="f-aj"><summary><span>O que ajustar</span><i class="chev"></i></summary><ul>${f.ajustes.map(x => `<li>${esc(x)}</li>`).join("")}</ul></details></div>`; t += 0.12; return h; }).join("");
     const ctaT = t + 0.05;
 
     const cmp = d.comparativo;
+    const temAtend = cmp.some(r => r.id === "atendimento"), temLoja = cmp.some(r => r.id === "loja");
+    const caso = !temAtend && temLoja ? E.CASOS.site : E.CASOS.chat;
+    const vq = VIDEOS[2];
     const cmpHtml = cmp.length ? `<section class="sec"><h2 class="rv" ${dly(cmpT)}>O preço de não mudar</h2>
       <div class="vs2 rv" ${dly(cmpT + 0.1)}>
         <div class="vs2-head"><span class="chip2 no">Se nada mudar</span><span class="chip2 yes">★ Com a Elevar</span></div>
         ${cmp.map(r => `<div class="vs2-row"><small>${esc(r.nome)}</small><div class="vs2-cells"><div class="c no"><span class="vs-ic">✕</span><b>${esc(r.hoje)}</b></div><div class="c yes"><span class="vs-ic">✓</span><b>${esc(r.com)}</b></div></div></div>`).join("")}
-        <div class="vs2-cells vs2-sum"><div class="c no"><small>Deixado na mesa</small><div class="vs-big"><b>${cmp.length}</b><span>${cmp.length === 1 ? "ponto em aberto" : "pontos em aberto"}</span></div></div><div class="c yes"><small>Potencial com a Elevar</small><div class="vs-big"><b>+${cmp.length}</b><span>${cmp.length === 1 ? "ponto atendido" : "pontos atendidos"}</span></div></div></div>
+      </div>
+      <div class="caso rv" ${dly(cmpT + 0.25)}>
+        <span class="eyebrow">Caso real com a Elevar</span>
+        <div class="caso-num"><b>${esc(caso.n)}</b><span>${esc(caso.t)}</span></div>
+        <div class="caso-dep"><div class="vcard mini" data-pos="c" data-id="${vq.id}">${videoPoster(vq)}</div><div class="dep-t"><b>Farmácia do Vaqueiro</b><p>Veja o que o responsável pela farmácia recomenda para outros donos de farmácia que pensam em contratar a Elevar.</p></div></div>
       </div></section>` : "";
 
     const resumoHtml = `<section class="resumo rv" ${dly(resT)}>
@@ -481,7 +515,7 @@
     shell(`<main>
       <section class="r-hero rv" ${dly(0)}>
         <span class="eyebrow live"><i class="pulse"></i><span class="rot" id="rrot">${primeiro ? `Diagnóstico de <b>${esc(primeiro)}</b>` : "Diagnóstico <b>pronto</b>"}</span></span>
-        <h1>${quem} está deixando vendas na mesa.</h1>
+        <h1>${titulo}</h1>
       </section>
 
       <section class="gauge-card rv" ${dly(0.15)}><span class="k">Preparo para vender online</span>${gauge(d.indice)}
@@ -509,6 +543,14 @@
 
     app.querySelectorAll("[data-cta]").forEach(el => el.addEventListener("click", () => track("cta_click", { where: el.dataset.cta, classe: R.classe })));
     animateResult(d);
+    const dep = app.querySelector(".caso-dep");
+    if (dep) dep.onclick = e => {
+      const b = e.target.closest(".vplay"); if (!b) return;
+      const card = b.closest(".vcard"), v = VIDEOS.find(x => x.id === card.dataset.id);
+      dep.classList.add("open"); card.classList.add("open");
+      card.innerHTML = `<iframe src="https://player.cloudinary.com/embed/?cloud_name=mqah19j9&public_id=${v.id}&autoplay=true&player[autoplay]=true" title="${esc(v.titulo)}" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen></iframe>`;
+      track("video_play", { video: v.id, where: "resultado" });
+    };
   }
 
   function animateResult(d) {

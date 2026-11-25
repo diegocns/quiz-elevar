@@ -108,40 +108,70 @@
   // item "não marcado" = lacuna (se marcou "nenhum", todos são lacuna)
   const lacuna = (a, item) => !(a.gaps || []).includes(item);
 
+  // Fontes: todas as estatísticas e casos vêm da proposta comercial da Elevar (2026). Os casos não trazem o nome do cliente.
+  const SRC_DADOS = "Fonte: proposta comercial da Elevar (2026)";
+  const SRC_CASO = "Caso real de cliente Elevar (proposta comercial 2026)";
+  const CASOS = {
+    chat: { n: "1 → 5 vendas por dia", t: "com um único vendedor no WhatsApp: de 12 para 20 atendimentos por dia e de 8% para 25% de conversão.", src: SRC_CASO },
+    site: { n: "1,5 → 22 vendas por dia", t: "no site, com campanhas e loja ligada ao estoque: os carrinhos foram de 0,95% para 4,45% dos acessos.", src: SRC_CASO }
+  };
+
+  // Dado exibido logo abaixo das alternativas, conforme o que o lead marca (não muda o diagnóstico)
+  // Destaque exibido ao marcar a alternativa: seta + número (↑ ganho, ↓ perda) e uma frase curta. Não muda o diagnóstico.
+  // Fontes: proposta comercial da Elevar (+32% clientes e +25% faturamento são os números gerais da Elevar;
+  // 22%, 30% e 73% são as estatísticas da página "causas de perda de vendas"; +67% e 5x vêm do caso do Chat Commerce: 12→20 atendimentos e 1→5 vendas por dia).
+  function insight(qid, a) {
+    const v = a[qid];
+    if (qid === "atendimento") return ({
+      nao_vende: { tone: "up", n: "↑ 32%", t: "mais clientes, em média, para quem vende com a Elevar. Abrir o WhatsApp é o primeiro passo." },
+      balcao: { tone: "down", n: "↓ 22%", t: "na conversão quando o atendimento demora. Separando o WhatsApp do balcão com a Elevar, você evita essa perda." },
+      equipe: { tone: "down", n: "↓ 30%", t: "do custo vai embora com tarefas manuais. Automatizando orçamento e pedido com a Elevar, você reduz esse desperdício." },
+      atendente: { tone: "down", n: "↓ 73%", t: "dos clientes desistem quando a resposta demora. Respondendo na hora com a Elevar, você segura essas vendas." },
+      equipe_wa: { tone: "up", n: "↑ 67%", t: "mais atendimentos por vendedor num caso real com a Elevar, com a fila organizada." },
+      atendente_ok: { tone: "up", n: "↑ 5x", t: "mais vendas por dia com o mesmo vendedor, num caso real com a Elevar." }
+    })[v] || null;
+    if (qid === "gaps") {
+      const g = v || [];
+      if (g.includes("nenhum")) return { tone: "up", n: "↑ 25%", t: "de faturamento, em média, para quem vende com a Elevar. Loja online e WhatsApp abrem mais portas de venda." };
+      return null;
+    }
+    return null;
+  }
+
   const FRENTES = [
-    { id: "resposta", icon: "clock", nome: "Resposta rápida no WhatsApp",
+    { id: "resposta", icon: "clock", nome: "Resposta rápida",
       curto: "Fila e distribuição para ninguém ficar sem resposta.",
-      stat: { n: "73%", t: "dos clientes desistem quando a resposta demora" },
+      stat: { n: "73%", t: "dos clientes desistem da compra quando o atendimento demora", src: SRC_DADOS },
       on: a => manual(a), nota: a => ({ atendente: "A+", equipe_wa: "A+", equipe: "A", balcao: "A" }[a.atendimento] || "B") },
-    { id: "chat_erp", icon: "chat", nome: "Venda no WhatsApp ligada ao seu sistema",
+    { id: "chat_erp", icon: "chat", nome: "Venda no WhatsApp",
       curto: "Preço, foto e estoque do seu sistema direto na conversa.",
-      stat: { n: "8% → 25%", t: "dos atendimentos viram venda, num caso real" },
+      stat: { n: "8% → 25%", t: "dos atendimentos no WhatsApp viraram venda, com o mesmo vendedor", src: SRC_CASO, caso: true },
       on: () => true, nota: () => "A+" },
-    { id: "estoque", icon: "box", nome: "Estoque real na hora da venda",
+    { id: "estoque", icon: "box", nome: "Estoque real na venda",
       curto: "O atendente vê o que a loja tem, sem sair da conversa.",
-      stat: { n: "40%", t: "das vendas perdidas vêm de falta de estoque" },
+      stat: { n: "40%", t: "das vendas perdidas acontecem por falta do produto em estoque", src: SRC_DADOS },
       on: () => true, nota: () => "A" },
-    { id: "manual", icon: "zap", nome: "Menos trabalho repetido",
+    { id: "manual", icon: "zap", nome: "Menos trabalho manual",
       curto: "Pedido, pagamento e entrega sem digitar tudo de novo.",
-      stat: { n: "30%", t: "de custo escondido em tarefas manuais" },
+      stat: { n: "30%", t: "do custo é invisível: tempo da equipe gasto com tarefas manuais", src: SRC_DADOS },
       on: a => manual(a), nota: a => (a.atendimento === "equipe" ? "A+" : a.atendimento === "atendente_ok" ? "B" : "A") },
-    { id: "site", icon: "site", nome: "Loja online ligada ao estoque",
+    { id: "site", icon: "site", nome: "Loja online",
       curto: "Cliente compra sozinho, a qualquer hora.",
-      stat: { n: "6% → 10,1%", t: "dos carrinhos viram venda, num caso real" },
+      stat: { n: "6% → 10,1%", t: "dos carrinhos abertos no site viraram compra", src: SRC_CASO, caso: true },
       on: a => lacuna(a, "site"), nota: () => "A+" },
-    { id: "ia", icon: "bot", nome: "Atendimento automático nos picos",
+    { id: "ia", icon: "bot", nome: "Atendimento automático",
       curto: "Responde na hora, de dia, de noite e quando a fila enche.",
       on: a => a.atendimento === "atendente" || a.atendimento === "equipe_wa", nota: a => (a.atendimento === "equipe_wa" ? "A+" : "A") },
-    { id: "recompra", icon: "repeat", nome: "Cliente que volta a comprar",
+    { id: "recompra", icon: "repeat", nome: "Cliente que volta",
       curto: "Lembra quem toma remédio de uso contínuo e quem largou a compra.",
       on: a => lacuna(a, "recompra"), nota: () => "A" },
-    { id: "metricas", icon: "chart", nome: "Quanto cada atendente vende",
+    { id: "metricas", icon: "chart", nome: "Vendas por atendente",
       curto: "Ranking de vendas e tempo de resposta, sem planilha.",
       on: a => lacuna(a, "metricas"), nota: () => "B" },
-    { id: "status", icon: "truck", nome: "Cliente acompanha o pedido",
+    { id: "status", icon: "truck", nome: "Pedido acompanhado",
       curto: "Avisos no WhatsApp, no estilo iFood.",
       on: a => lacuna(a, "status"), nota: () => "B" },
-    { id: "onboarding", icon: "chat", nome: "WhatsApp como canal de vendas",
+    { id: "onboarding", icon: "chat", nome: "WhatsApp que vende",
       curto: "Começar a vender pelo WhatsApp já ligado ao estoque.",
       on: a => a.atendimento === "nao_vende", nota: () => "A+" }
   ];
@@ -231,10 +261,10 @@
     // Índice (0-100) = média ponderada das áreas
     const ar = areas(a);
     const indice = Math.max(10, Math.min(97, Math.round(ar.reduce((s, x) => s + x.valor * x.peso, 0))));
-    const banda = indice < 40 ? { id: "critica", label: "Muito espaço para vender mais", tone: "bad" }
-      : indice < 60 ? { id: "relevante", label: "Espaço relevante para vender mais", tone: "warn" }
-      : indice < 80 ? { id: "parcial", label: "Boa base, falta organizar", tone: "info" }
-      : { id: "madura", label: "Operação bem preparada", tone: "ok" };
+    const banda = indice < 40 ? { id: "critica", label: "Preparo baixo", tone: "bad" }
+      : indice < 60 ? { id: "relevante", label: "Preparo médio", tone: "warn" }
+      : indice < 80 ? { id: "parcial", label: "Preparo bom", tone: "info" }
+      : { id: "madura", label: "Preparo alto", tone: "ok" };
 
     // Pacote sugerido: só para o time comercial (não aparece para o lead)
     const pacote = {
@@ -287,7 +317,7 @@
     ].join("\n");
   }
 
-  const api = { Q, STEPS, ERP_INTEGRADOS, CNAE_FARMACIA, optLabel, erpStatus, classe, isFarmacia, divergePorte, diagnosticar, resultado, mensagemWhatsApp };
+  const api = { CASOS, insight, Q, STEPS, ERP_INTEGRADOS, CNAE_FARMACIA, optLabel, erpStatus, classe, isFarmacia, divergePorte, diagnosticar, resultado, mensagemWhatsApp };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.EL_ENGINE = api;
 })(typeof window !== "undefined" ? window : globalThis);
